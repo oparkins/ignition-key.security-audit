@@ -59,6 +59,8 @@ client's name. This allows for team members to talk about the client without
 giving away to other people around. It is also used for username authentication
 later.
 
+There is a password hash listed in the laptop configuration files. It is the user account to sign in locally on the machine. It is recommend that the hash is changed to suit your organizational needs.
+
 
 After editing the configuration files, run the following command inside the
 `ansible/server/` directory:

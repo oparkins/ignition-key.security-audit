@@ -1,0 +1,6 @@
+all:
+  hosts:
+    <IP>:
+      LAPTOP_NUM: 1
+    <IP>:
+      LAPTOP_NUM: 2

@@ -1,0 +1,123 @@
+--- 
+- name: "Update Kali Machine"
+  apt:
+    upgrade: dist
+
+- name: "Install Packages"
+  apt:
+    state: present
+    pkg:
+      - autossh
+      - ethtool
+      - nmap
+      - vim
+      - screen
+      - tmux
+      - htop
+      - dnsutils
+      - ettercap-text-only
+      - mtr
+      - python
+      - openssh-server
+      - arpwatch
+
+- name: "Setup SSH Certficate use"
+  copy:
+    src: /var/ca/ssh/security-audit.ca.pub
+    dest: /etc/ssh/security-audit.ca.pub
+  notify:
+    - restart sshd
+
+- name: "Change SSH Configuration"
+  copy:
+    src: files/sshd_config
+    dest: /etc/ssh/sshd_config
+  notify:
+    - restart sshd
+  
+- name: "Create .ssh directory"
+  file:
+    path: /root/.ssh/
+    state: directory
+
+- name: "Generate SSH Key"
+  openssh_keypair:
+    path: /root/.ssh/id_rsa
+
+- name: "Sign SSH Key with Server CA"
+  block: 
+    - name: "Copy SSH Public Key to Server"
+      fetch: 
+        src: /root/.ssh/id_rsa.pub
+        dest: /tmp/id_rsa.pub
+        flat: yes
+
+    - name: "Sign SSH Key"
+      delegate_to: localhost  
+      shell: "ssh-keygen -s /var/ca/ssh/security-audit.ca -I Audit-{{ LAPTOP_NUM }}  -n {{ audit_user }} /tmp/id_rsa.pub"
+
+    - name: "Copy SSH Certificate back to laptop"
+      copy: 
+        src: /tmp/id_rsa-cert.pub
+        dest: /root/.ssh/id_rsa-cert.pub
+        mode: 0600
+
+- name: "Laptop lid configuration changes"
+  block:
+    - name: "Copy files"
+      copy: 
+        src: files/logind.conf
+        dest: /etc/systemd/logind.conf
+    - name: "Restart systemd"
+      service:
+        name: systemd-logind.service
+        state: restarted
+
+- name: "Start AutoSSH"
+  block: 
+    - name: "Install AutoSSH Script"
+      copy:
+        content: "#!/bin/bash\nAUTOSSH_PIDFILE=/root/autossh.pid autossh -M{{ SSH_PING }} {{ audit_user }}@{{ server_address }} -f -R{{ SSH_REMOTE_TUN }}:localhost:22 -R{{OPENVAS_SCANNER}}:localhost:9390 -N -o 'ServerAliveInterval 60' -o 'ExitOnForwardFailure yes' -o 'StrictHostKeyChecking no'"
+        dest: /root/autossh.sh
+    - name: "Add runnable permissions"
+      file:
+        path: /root/autossh.sh
+        state: touch
+        mode: u+x,g+x,o+x
+    - name: Copy autossh service file
+      copy:
+        src: files/autossh.service
+        dest: /etc/systemd/system/autossh.service
+
+    - name: Enable and start ssh
+      service:
+        name: ssh
+        enabled: yes
+        state: started
+
+    - name: Enable and start the service
+      service:
+        name: autossh.service
+        enabled: yes
+        state: started
+
+- name: "Change system name"
+  copy:
+    content: "Audit-{{ LAPTOP_NUM }}"
+    dest: /etc/hostname
+  notify:
+    - reboot machine
+
+- name: "Update hosts file"
+  copy: 
+    content: "127.0.0.1\tlocalhost\n127.0.1.1\Audit-{{ LAPTOP_NUM }}\n"
+    dest: /etc/hosts
+
+- name: "Add audit user with sudo"
+  user:
+    name: "{{ audit_user }}"
+    comment: "Audit User"
+    groups: sudo
+    append: yes
+    shell: /bin/bash
+    password: $1$Sv8SuUru$1mmhho28Puzxp0ll3MgJd/

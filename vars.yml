@@ -1,0 +1,8 @@
+---
+
+server_address: <INSERT SERVER ADDRESS>
+server_ssh_port: 22
+audit_user: <INSERT CLIENT CODE NAME>
+ssh_base_port: 10000
+ssh_ping_port: 11000
+openvas_base_port: 12000

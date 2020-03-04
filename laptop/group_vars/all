@@ -1,0 +1,5 @@
+---
+
+SSH_REMOTE_TUN: "{{ ssh_base_port + LAPTOP_NUM }}"
+SSH_PING: "{{ 11000 + LAPTOP_NUM }}"
+OPENVAS_SCANNER: "{{ 12000 + LAPTOP_NUM }}"

@@ -1,0 +1,9 @@
+---
+  # This playbook deploys security audit server
+  - hosts: all
+    remote_user: root
+    roles:
+      - common
+      - openvas
+    vars_files:
+      - vars.yml

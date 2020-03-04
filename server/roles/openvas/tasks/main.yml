@@ -1,0 +1,153 @@
+--- 
+
+- name: "Install OpenVAS Manager"
+  block:
+    - name: "Create CA Directory"
+      file:
+        path: /var/ca/
+        state: directory
+        mode: '0700'
+  
+    - name: "Download EasyRSA"
+      unarchive:
+        remote_src: yes
+        src: "https://github.com/OpenVPN/easy-rsa/releases/download/v3.0.6/EasyRSA-unix-v3.0.6.tgz"
+        dest: /var/ca/
+
+    - name: "Copy var file"
+      copy: 
+        src: files/vars
+        dest: /var/ca/EasyRSA-v3.0.6/
+
+    - name: "Init PKI"
+      shell:
+        cmd: "./easyrsa init-pki"
+        chdir: /var/ca/EasyRSA-v3.0.6
+
+    - name: "Build CA"
+      shell:
+        cmd: "./easyrsa build-ca nopass"
+        chdir: /var/ca/EasyRSA-v3.0.6
+
+    - name: "Generate Client Certificate"
+      shell:
+        cmd: "./easyrsa gen-req ManagerClient nopass"
+        chdir: /var/ca/EasyRSA-v3.0.6
+
+    - name: "Signing Client Certificate"
+      shell:
+        cmd: "./easyrsa sign-req client ManagerClient"
+        chdir: /var/ca/EasyRSA-v3.0.6
+
+    - name: "Generate Server Certificate"
+      shell:
+        cmd: "./easyrsa gen-req ManagerServer nopass"
+        chdir: /var/ca/EasyRSA-v3.0.6
+
+    - name: "Signing Server Certificate"
+      shell:
+        cmd: "./easyrsa sign-req server ManagerServer"
+        chdir: /var/ca/EasyRSA-v3.0.6
+
+    - name: "Install OpenVAS and Greenbone"
+      apt:
+        pkg: 
+          - openvas-manager 
+          - openvas-scanner
+          - greenbone-security-assistant 
+          - sqlite3
+          - xsltproc
+          - bzip2
+        state: present
+        update_cache: yes
+
+    - name: "Install CA Certificate"
+      block:
+        - name: "Create Directory"
+          file:
+            path: /var/lib/openvas/CA/
+            state: directory
+        - name: "Copy CA Certificate"
+          copy:
+            src: /var/ca/EasyRSA-v3.0.6/pki/ca.crt
+            dest: /var/lib/openvas/CA/cacert.pem
+            remote_src: yes
+    - name: "Install Client Certificate"
+      block:
+        - name: "Create Directory"
+          file:
+            path: /var/lib/openvas/private/CA/
+            state: directory
+        - name: "Copy Client Certificate"
+          copy:
+            src: /var/ca/EasyRSA-v3.0.6/pki/issued/ManagerClient.crt
+            dest: /var/lib/openvas/CA/clientcert.pem
+            remote_src: yes
+        - name: "Copy Client Key"
+          copy:
+            src: /var/ca/EasyRSA-v3.0.6/pki/private/ManagerClient.key 
+            dest: /var/lib/openvas/private/CA/clientkey.pem
+            remote_src: yes
+    - name: "Install Server Certificate"
+      block:
+        - name: "Copy Certificate"
+          copy:
+            src: /var/ca/EasyRSA-v3.0.6/pki/issued/ManagerServer.crt
+            dest: /var/lib/openvas/CA/servercert.pem
+            remote_src: yes
+        - name: "Copy Server Key"
+          copy:
+            src: /var/ca/EasyRSA-v3.0.6/pki/private/ManagerServer.key
+            dest: /var/lib/openvas/private/CA/serverkey.pem
+            remote_src: yes
+
+    - name: "Update NVT database"
+      shell: greenbone-nvt-sync
+    
+    - name: "Compress NVT Database for later"
+      archive:
+        path: /var/lib/openvas/plugins/*
+        dest: /var/openvas-plugins.tar.bz2
+        format: bz2
+
+    - name: "Update CERT Data"
+      shell: greenbone-certdata-sync
+
+    - name: "Compress CERT Data for later"
+      archive:
+        path: /var/lib/openvas/cert-data/*
+        dest: /var/openvas-cert.tar.bz2
+        format: bz2
+
+    - name: "Update SCAP Data"
+      shell: greenbone-scapdata-sync
+
+    - name: "Compress SCAP Data for later"
+      archive:
+        path: /var/lib/openvas/scap-data/*
+        dest: /var/openvas-scap.tar.bz2
+        format: bz2
+  
+    - name: "Start OpenVAS Service"
+      service:
+        name: openvas-manager
+        state: restarted
+        enabled: yes
+    
+    - name: "Start Greenbone Service"
+      service:
+        name: greenbone-security-assistant
+        state: restarted
+        enabled: yes
+  
+    - name: "Generate Password"
+      shell: 
+        cmd: "openvasmd --create-user=admin > /root/openvas.password"
+        creates: /root/openvas.password
+
+    - name: "Copy password to audit account"
+      copy:
+        src: /root/openvas.password
+        dest: "/home/{{ audit_user }}/openvas.password"
+        mode: 0644
+        remote_src: yes

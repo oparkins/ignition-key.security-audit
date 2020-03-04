@@ -1,0 +1,112 @@
+--- 
+  - name: "Install Open VAS Scanner"
+    apt:
+      state: present
+      pkg:
+        - openvas-scanner 
+        - bzip2
+        - openvas-manager
+
+  - name: "Create and Sign Certificates"
+    block:    
+      - name: "Download EasyRSA"
+        unarchive:
+          remote_src: yes
+          src: "https://github.com/OpenVPN/easy-rsa/releases/download/v3.0.6/EasyRSA-unix-v3.0.6.tgz"
+          dest: /var/
+
+      - name: "Copy var file"
+        copy: 
+          src: files/vars
+          dest: /var/EasyRSA-v3.0.6/
+
+      - name: "Init PKI"
+        shell:
+          cmd: "./easyrsa init-pki"
+          chdir: /var/EasyRSA-v3.0.6
+
+      - name: "Generate Certificate"
+        shell:
+          cmd: "./easyrsa gen-req SlaveServer nopass"
+          chdir: /var/EasyRSA-v3.0.6
+      
+      - name: "Copy new certificates to server"
+        fetch:
+          src: /var/EasyRSA-v3.0.6/pki/reqs/SlaveServer.req
+          dest: /tmp/SlaveServer.req
+          flat: yes
+      - name: "Import request"
+        delegate_to: localhost
+        shell: 
+          cmd: "./easyrsa import-req /tmp/SlaveServer.req SlaveServer{{ LAPTOP_NUM }}"
+          creates: /var/ca/EasyRSA-v3.0.6/pki/reqs/SlaveServer{{ LAPTOP_NUM }}.req
+        args:
+          chdir: /var/ca/EasyRSA-v3.0.6/
+      - name: "Sign request"
+        delegate_to: localhost
+        shell: 
+          cmd: "./easyrsa sign-req server SlaveServer{{ LAPTOP_NUM }}"
+        args:
+          chdir: /var/ca/EasyRSA-v3.0.6/
+      - name: "Make directory for certificates"
+        file: 
+          path: /var/lib/openvas/CA
+          state: directory
+      - name: "Make directory for certificates"
+        file: 
+          path: /var/lib/openvas/private/CA/
+          state: directory
+
+      - name: "Copy SlaveServer cert back"
+        copy:
+          src: "/var/ca/EasyRSA-v3.0.6/pki/issued/SlaveServer{{ LAPTOP_NUM }}.crt"
+          dest: "/var/lib/openvas/CA/servercert.pem"
+
+      - name: "Copy SlaveServer key"
+        copy:
+          src: /var/EasyRSA-v3.0.6/pki/private/SlaveServer.key
+          dest: /var/lib/openvas/private/CA/serverkey.pem
+          remote_src: yes
+
+      - name: "Copy CA Certificate"
+        copy:
+          src: /var/ca/EasyRSA-v3.0.6/pki/ca.crt
+          dest: /var/lib/openvas/CA/cacert.pem
+      
+      - name: "Copy NVT Database"
+        unarchive:
+          src: /var/openvas-plugins.tar.bz2
+          dest: /var/lib/openvas/plugins/
+      
+      - name: "Copy CERT Data"
+        unarchive:
+          src: /var/openvas-cert.tar.bz2
+          dest: /var/lib/openvas/cert-data/
+      
+      - name: "Copy SCAP Data"
+        unarchive:
+          src: /var/openvas-scap.tar.bz2
+          dest: /var/lib/openvas/scap-data/
+      - name: "Rebuild database"
+        shell: openvasmd --rebuild
+        
+      - name: "Restart scanner"
+        service:
+          name: openvas-scanner
+          state: restarted
+          enabled: yes
+      - name: "Restart manager"
+        service:
+          name: openvas-manager
+          state: restarted
+          enabled: yes
+      - name: "Add scanner to OpenVAS Manager"
+        delegate_to: localhost
+        shell: |
+          openvasmd --create-scanner Laptop-"{{ LAPTOP_NUM}}" \
+            --scanner-ca-pub=/var/ca/EasyRSA-v3.0.6/pki/ca.crt \
+            --scanner-key-pub=/var/ca/EasyRSA-v3.0.6/pki/issued/ManagerClient.crt \
+            --scanner-key-priv=/var/ca/EasyRSA-v3.0.6/pki/private/ManagerClient.key \
+            --scanner-port "{{ OPENVAS_SCANNER }}" \
+            --scanner-host=127.0.0.1 \
+            --scanner-type='OpenVAS'

@@ -1,0 +1,13 @@
+[Unit]
+Description=Start autossh
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=forking
+ExecStart=/root/autossh.sh
+PIDFile=/root/autossh.pid
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

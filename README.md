@@ -1,6 +1,7 @@
 # ignition-key.security-audit
 Ansible Scripts to Automatically Setup a Security Audit Infrastructure 
 
+Created for New Mexico Institute of Mining and Technology's CyberCorp Scholarship For Service Program.
 
 ## About
 
